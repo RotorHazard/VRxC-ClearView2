@@ -33,7 +33,7 @@ import Results
 from RHRace import WinCondition
 import RHUtils
 
-from VRxControl import VRxController
+from VRxControl import VRxController, VRxDevice, VRxDeviceMethod
 
 logger = logging.getLogger(__name__)
 
@@ -71,9 +71,6 @@ class CV2Controller(VRxController):
 
     def onStartup(self, args):
         logger.info("VRx CV2 starting up")
-
-        # Stored receiver data
-        self.rx_data = {}
 
         self.config = self.validate_config(Config.VRX_CONTROL)
 
@@ -121,6 +118,19 @@ class CV2Controller(VRxController):
         # (Because the pi was already running, they should all be connected to the broker)
         # Even if the server.py is restarted, the broker continues to run:)
 
+    def updateStatus(self):
+        self.get_seat_lock_status()
+        self.request_variable_status()
+
+    def updateDevice(self, target):
+        seat_number = self.devices[target].map.seat
+        if seat_number is not None:
+            seat = self._seats[seat_number]
+            frequency = seat.seat_frequency
+            self.set_target_frequency(target, frequency)
+        else:
+            logger.debug("Seat is {} for {}".format(seat_number, target))
+
     def onHeatSet(self, args):
         logger.debug('VRx CV2 heatSet')
         try:
@@ -129,8 +139,8 @@ class CV2Controller(VRxController):
             logger.error("Unable to send callsigns. heat_id not found in event.")
             return
 
-        for heatseat in self.RHData.get_heatNodes_by_Heat(heat_id):
-            heatseat_index = heatseat.seat_index
+        for heatseat in self.RHData.get_heatNodes_by_heat(heat_id):
+            heatseat_index = heatseat.node_index
             if heatseat_index < self.num_seats:  # TODO this may break with non-contiguous nodes
                 if heatseat.pilot_id != RHUtils.PILOT_ID_NONE:
                     pilot = self.RHData.get_pilot(heatseat.pilot_id) 
@@ -471,7 +481,7 @@ class CV2Controller(VRxController):
             topic = mqtt_publish_topics["cv1"]["receiver_command_esp_targeted_topic"][0]%serial_num
             cmd = json.dumps({"seat": str(desired_seat_num)})
             self._mqttc.publish(topic, cmd)
-            self.rx_data[serial_num]["needs_config"] = True
+            self.devices[serial_num].extended_properties["needs_config"] = True
             return
 
         raise NotImplementedError("TODO Broadcast set all seat number")
@@ -608,21 +618,18 @@ class CV2Controller(VRxController):
         initial_config_success = False
 
         try:
-            _sn = self.rx_data[target]["seat"]
+            _sn = self.devices[target].map.seat
         except KeyError:
             logger.info("No seat number available for %s yet", target)
         else:
             logger.info("Performing initial configuration for %s", target)
 
-            seat_number = int(self.rx_data[target]['seat'])
-            seat = self._seats[seat_number]
-            frequency = seat.seat_frequency
-            self.set_target_frequency(target, frequency)
+            self.updateDevice(target)
             self.turn_off_osd_targeted(target)
 
             # TODO: send most relevant OSD information
 
-            self.rx_data[target]["needs_config"] = False
+            self.devices[target].extended_properties["needs_config"] = False
             initial_config_success = True
 
         return initial_config_success
@@ -638,20 +645,23 @@ class CV2Controller(VRxController):
 
         connection_status = message.payload
         logger.info("Found MQTT device: %s => %s" % (rx_name,connection_status))
-        rx_data = self.rx_data.setdefault(rx_name,{"connection": connection_status})
+
+        device = VRxDevice()
+        device.id = rx_name
+        device.type = "ClearView 2.0"
+        device.connected = bool(connection_status)
+        self.addDevice(device)
+        self.setDeviceMethod(rx_name, VRxDeviceMethod.SEAT)
 
         if int(connection_status) == 1:
             logger.info("Device %s is not yet configured by the server after a successful connection. Conducting some config now" % rx_name)
-            rx_data["needs_config"] = True
+            self.devices[rx_name].extended_properties["needs_config"] = True
 
             # Start by requesting the status of the device that just joined.
             # At this point, it could be any MQTT device becaue we haven't filtered by receivers.
             # See TODO in on_message_status
             self.req_status_targeted("variable", rx_name)
             self.req_status_targeted("static", rx_name)
-
-
-
 
         #TODO only fire event if the data changed
         self.Events.trigger(Evt.VRX_DATA_RECEIVE, {
@@ -671,36 +681,59 @@ class CV2Controller(VRxController):
     def on_message_resp_targeted(self, client, userdata, message):
         topic = message.topic
         rx_name = topic.split('/')[-1]
+        device = self.devices[rx_name]
         payload = message.payload
         if len(payload) >= MINIMUM_PAYLOAD:
-            rx_data = self.rx_data.setdefault(rx_name,{"connection": "1"}) #TODO this is probably not needed
+            device.connected = True #TODO this is probably not needed
             try:
                 extracted_data = json.loads(payload)
 
             except:
                 logger.warning("Can't load json data from '%s' of '%s'", rx_name, payload)
                 logger.debug(traceback.format_exc())
-                rx_data["valid_rx"] = False
+                device.ready = False
             else:
-                rx_data["valid_rx"] = True
-                rx_data.update(extracted_data)
+                device.ready = True
+
+                # device.extended_properties.update(extracted_data)
+
+                if "device_name" in extracted_data:
+                    device.name = extracted_data["device_name"]
+
+                if "ip_addr" in extracted_data:
+                    device.address = extracted_data["ip_addr"]
+
+                if "seat" in extracted_data:
+                    self.setDeviceSeat(rx_name, int(extracted_data["seat"]))
 
                 if "lock" in extracted_data:
                     rep_lock = extracted_data["lock"]
 
-                    rx_data["chosen_camera_type"] = rep_lock[0]
-                    rx_data["cam_forced_or_auto"] = rep_lock[1]
-                    rx_data["lock_status"] = rep_lock[2]
+                    device.extended_properties["chosen_camera_type"] = rep_lock[0]
+                    device.extended_properties["cam_forced_or_auto"] = rep_lock[1]
+                    device.video_lock = rep_lock[2] == "L"
 
+                if "video_format" in extracted_data:
+                    device.extended_properties["video_format"] = extracted_data["video_format"]
 
+                if "cv_version" in extracted_data:
+                    device.extended_properties["cv_version"] = extracted_data["cv_version"]
+
+                if "cvcm_version" in extracted_data:
+                    device.extended_properties["cvcm_version"] = extracted_data["cvcm_version"]
+
+                if "device_type" in extracted_data:
+                    device.extended_properties["device_type"] = extracted_data["device_type"]
+
+                if "osd_visibility" in extracted_data:
+                    device.extended_properties["osd_visibility"] = extracted_data["osd_visibility"]
 
                 #TODO only fire event if the data changed
                 self.Events.trigger(Evt.VRX_DATA_RECEIVE, {
                     'rx_name': rx_name,
                     })
 
-
-                if rx_data["needs_config"] == True and rx_data["valid_rx"] == True:
+                if device.extended_properties["needs_config"] == True and device.ready == True:
                     self.perform_initial_receiver_config(rx_name)
 
 
@@ -714,7 +747,7 @@ class CV2Controller(VRxController):
         if mode not in ["variable", "static"]:
             logger.error("Incorrect mode in req_status_targeted")
             return None
-        if serial_num not in self.rx_data.keys():
+        if serial_num not in self.devices:
             logger.error("RX %s does not exist", serial_num)
             return None
 
