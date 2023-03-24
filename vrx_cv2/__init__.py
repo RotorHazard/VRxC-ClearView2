@@ -43,7 +43,7 @@ MINIMUM_PAYLOAD = 7
 def registerHandlers(args):
     if 'registerFn' in args:
         args['registerFn'](CV2Controller(
-            'vrxc_cv2',
+            'cv2',
             'ClearView 2.0'
         ))
 
@@ -70,7 +70,7 @@ class CV2Controller(VRxController):
         return saved_config
 
     def onStartup(self, args):
-        logger.info("VRx CV2 starting up")
+        logger.info("VRxController CV2 starting up")
 
         self.config = self.validate_config(Config.VRX_CONTROL)
 
@@ -122,17 +122,22 @@ class CV2Controller(VRxController):
         self.get_seat_lock_status()
         self.request_variable_status()
 
-    def updateDevice(self, target):
-        seat_number = self.devices[target].map.seat
-        if seat_number is not None:
-            seat = self._seats[seat_number]
-            frequency = seat.seat_frequency
-            self.set_target_frequency(target, frequency)
+    def setDeviceSeat(self, device_id, seat):
+        if seat is not None:
+            self.set_seat_number(seat, None, device_id)
+            super().setDeviceSeat(device_id, seat)
+            self.setDeviceFrequency(device_id)
         else:
-            logger.debug("Seat is {} for {}".format(seat_number, target))
+            logger.debug("Seat is {} for {}".format(seat, device_id))
+
+    def setDeviceFrequency(self, device_id):
+        seat_number = self.devices[device_id].map.seat
+        if seat_number is not None:
+            seatObj = self._seats[seat_number]
+            frequency = seatObj.seat_frequency
+            self.set_target_frequency(device_id, frequency)
 
     def onHeatSet(self, args):
-        logger.debug('VRx CV2 heatSet')
         try:
             heat_id = args["heat_id"]
         except KeyError:
@@ -150,23 +155,18 @@ class CV2Controller(VRxController):
 
 
     def onRaceStage(self, _args):
-        logger.debug('VRx CV2 raceStage')
         self.set_message_direct(VRxALL, self.Language.__("Ready"))
 
     def onRaceStart(self, _args):
-        logger.debug('VRx CV2 raceStart')
         self.set_message_direct(VRxALL, self.Language.__("Go"))
 
     def onRaceFinish(self, _args):
-        logger.debug('VRx CV2 raceFinish')
         self.set_message_direct(VRxALL, self.Language.__("Finish"))
 
     def onRaceStop(self, _args):
-        logger.debug('VRx CV2 raceStop')
         self.set_message_direct(VRxALL, self.Language.__("Race Stopped. Land Now."))
 
     def onRaceLapRecorded(self, args):
-        logger.debug('VRx CV2 raceLapRecorded')
         '''
         *** TODO: Formatting for hardware (OSD length, etc.)
         '''
@@ -398,20 +398,18 @@ class CV2Controller(VRxController):
                 logger.debug('msg n{1}:  {0}'.format(message, seat_dest))
 
     def onLapsClear(self, args):
-        logger.debug('VRx CV2 lapsClear')
         self.set_message_direct(VRxALL, "---")
 
     def onFrequencySet(self, args):
-        logger.debug('VRx CV2 frequencySet')
         try:
             seat_index = args["nodeIndex"]
         except KeyError:
-            logger.error("Unable to set frequency. nodeIndex not found in event")
+            logger.error("Unable to set frequency. nodeIndex not found in args")
             return
         try:
             frequency = args["frequency"]
         except KeyError:
-            logger.error("Unable to set frequency. frequency not found in event")
+            logger.error("Unable to set frequency. frequency not found in args")
             return
 
         self.set_seat_frequency(seat_index, frequency)
@@ -443,15 +441,30 @@ class CV2Controller(VRxController):
         if seat_number == VRxALL:
             seat = self._seat_broadcast
             seat.request_static_status()
+
+            for device in self.devices:
+                self.devices[device].last_request = monotonic()
         else:
             self._seats[seat_number].request_static_status()
+
+            for device in self.devices:
+                if self.devices[device].map.method == VRxDeviceMethod.SEAT and self.devices[device].map.seat == seat_number:
+                    self.devices[device].last_request = monotonic()
 
     def request_variable_status(self, seat_number=VRxALL):
         if seat_number == VRxALL:
             seat = self._seat_broadcast
             seat.request_variable_status()
+
+            for device in self.devices:
+                self.devices[device].last_request = monotonic()
         else:
             self._seats[seat_number].request_variable_status()
+
+            for device in self.devices:
+                if self.devices[device].map.method == VRxDeviceMethod.SEAT and self.devices[device].map.seat == seat_number:
+                    self.devices[device].last_request = monotonic()
+
 
     ##############
     ## Seat Number
@@ -617,6 +630,7 @@ class CV2Controller(VRxController):
         """ Given the unique identifier of a receiver, perform the initial config"""
         initial_config_success = False
 
+
         try:
             _sn = self.devices[target].map.seat
         except KeyError:
@@ -624,7 +638,10 @@ class CV2Controller(VRxController):
         else:
             logger.info("Performing initial configuration for %s", target)
 
-            self.updateDevice(target)
+            seat_number = int(self.devices[target].map.seat)
+            seat = self._seats[seat_number]
+            frequency = seat.seat_frequency
+            self.set_target_frequency(target, frequency)
             self.turn_off_osd_targeted(target)
 
             # TODO: send most relevant OSD information
@@ -633,37 +650,35 @@ class CV2Controller(VRxController):
             initial_config_success = True
 
         return initial_config_success
-
-
-
-
+    
     def on_message_connection(self, client, userdata, message):
         rx_name = message.topic.split('/')[1]
 
         if rx_name == 'VRxController':
             return
 
-        connection_status = message.payload
+        connection_status = bool(message.payload == b'1')
         logger.info("Found MQTT device: %s => %s" % (rx_name,connection_status))
 
         device = VRxDevice()
         device.id = rx_name
         device.type = "ClearView 2.0"
-        device.connected = bool(connection_status)
+        device.connected = connection_status
+
         self.addDevice(device)
         self.setDeviceMethod(rx_name, VRxDeviceMethod.SEAT)
 
-        if int(connection_status) == 1:
+        if device.connected:
             logger.info("Device %s is not yet configured by the server after a successful connection. Conducting some config now" % rx_name)
             self.devices[rx_name].extended_properties["needs_config"] = True
 
             # Start by requesting the status of the device that just joined.
             # At this point, it could be any MQTT device becaue we haven't filtered by receivers.
             # See TODO in on_message_status
+            device.last_request = monotonic()
             self.req_status_targeted("variable", rx_name)
             self.req_status_targeted("static", rx_name)
 
-        #TODO only fire event if the data changed
         self.Events.trigger(Evt.VRX_DATA_RECEIVE, {
             'rx_name': rx_name,
             })
@@ -680,16 +695,17 @@ class CV2Controller(VRxController):
 
     def on_message_resp_targeted(self, client, userdata, message):
         topic = message.topic
-        rx_name = topic.split('/')[-1]
-        device = self.devices[rx_name]
+        device_id = topic.split('/')[-1]
+        device = self.devices[device_id]
         payload = message.payload
         if len(payload) >= MINIMUM_PAYLOAD:
             device.connected = True #TODO this is probably not needed
+            device.last_response = monotonic()
             try:
                 extracted_data = json.loads(payload)
 
             except:
-                logger.warning("Can't load json data from '%s' of '%s'", rx_name, payload)
+                logger.warning("Can't load json data from '%s' of '%s'", device_id, payload)
                 logger.debug(traceback.format_exc())
                 device.ready = False
             else:
@@ -703,8 +719,8 @@ class CV2Controller(VRxController):
                 if "ip_addr" in extracted_data:
                     device.address = extracted_data["ip_addr"]
 
-                if "seat" in extracted_data:
-                    self.setDeviceSeat(rx_name, int(extracted_data["seat"]))
+                if "seat" in extracted_data and extracted_data["seat"].isnumeric():
+                    device.map.seat = int(extracted_data["seat"])
 
                 if "lock" in extracted_data:
                     rep_lock = extracted_data["lock"]
@@ -730,11 +746,11 @@ class CV2Controller(VRxController):
 
                 #TODO only fire event if the data changed
                 self.Events.trigger(Evt.VRX_DATA_RECEIVE, {
-                    'rx_name': rx_name,
+                    'device_id': device_id,
                     })
 
                 if device.extended_properties["needs_config"] == True and device.ready == True:
-                    self.perform_initial_receiver_config(rx_name)
+                    self.perform_initial_receiver_config(device_id)
 
 
     def req_status_targeted(self, mode = "variable",serial_num = None):
