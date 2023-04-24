@@ -433,6 +433,12 @@ class CV2Controller(VRxController):
                     logger.error("Cannot use reserved character '%s' in '%s'"%(cv_csum, args['option']))
                     self.RHData.set_option(args['option'], '')
 
+    def onShutdown(self, arg):
+        logger.debug("VRx CV2 Shutting down")
+        self._seat_broadcast.clear_user_message()
+        self._seat_broadcast.turn_on_osd()
+        self._seat_broadcast.set_wifi_state(clearview.comspecs.cv_device_limits["wifi_mode_ap"])
+
     ##############
     ## MQTT Status
     ##############
@@ -630,7 +636,6 @@ class CV2Controller(VRxController):
         """ Given the unique identifier of a receiver, perform the initial config"""
         initial_config_success = False
 
-
         try:
             _sn = self.devices[target].map.seat
         except KeyError:
@@ -650,7 +655,7 @@ class CV2Controller(VRxController):
             initial_config_success = True
 
         return initial_config_success
-    
+
     def on_message_connection(self, client, userdata, message):
         rx_name = message.topic.split('/')[1]
 
@@ -988,6 +993,13 @@ class VRxBroadcastSeat(BaseVRxSeat):
         self._mqttc.publish(topic, cmd)
         return cmd
 
+    def clear_user_message(self):
+        """Clears the raw 'user message' on all OSD's"""
+        topic = self._rx_cmd_esp_all_topic
+        cmd = json.dumps({"user_msg" : ""}) # empty string
+        self._mqttc.publish(topic, cmd)
+        return cmd
+
     def turn_off_osd(self):
         """Turns off all OSD elements except user message"""
         topic = self._rx_cmd_esp_all_topic
@@ -1020,10 +1032,16 @@ class VRxBroadcastSeat(BaseVRxSeat):
         self._mqttc.publish(topic,cmd)
 
     def get_seat_lock_status(self,):
-        topic = mqtt_publish_topics["cv1"]["receiver_command_esp_all_topic"][0]
+        topic = self._rx_cmd_esp_all_topic
         report_req = json.dumps({"lock":"?"})
         self._mqttc.publish(topic,report_req)
         return report_req
+
+    def set_wifi_state(self, wifi_state):
+        topic = self._rx_cmd_esp_all_topic
+        cmd = json.dumps({"wifi": wifi_state})
+        self._mqttc.publish(topic, cmd)
+        return cmd
 
 def main():
     # vrxc = VRxController("192.168.0.110",
@@ -1042,5 +1060,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
