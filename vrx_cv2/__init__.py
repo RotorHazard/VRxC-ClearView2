@@ -196,12 +196,10 @@ class CV2Controller(VRxController):
         # "P[n] L[n] 0:00:00"
         message = F'{POS_HEADER}{info.current.position} {lap_count} {RHUtils.time_format(info.current.last_lap_time, TIME_FORMAT)}'
 
-        if info.race.win_condition == WinCondition.FASTEST_3_CONSECUTIVE:
+        if info.race.win_condition == WinCondition.FASTEST_CONSECUTIVE:
             # "P[n] L[n] 0:00:00 | #/0:00.000" (current | best consecutives)
-            if info.current.lap_number >= 3:
-                message += F' | 3/{RHUtils.time_format(info.current.consecutives, TIME_FORMAT)}'
-            elif info.current.lap_number == 2:
-                message += F' | 2/{RHUtils.time_format(info.current.total_time_laps, TIME_FORMAT)}'
+            if info.current.lap_number > 1:
+                message += F' | {info.current.consecutives_base}/{RHUtils.time_format(info.current.consecutives, TIME_FORMAT)}'
 
         elif info.race.win_condition == WinCondition.FASTEST_LAP:
             if info.next_rank.split_time:
@@ -228,7 +226,7 @@ class CV2Controller(VRxController):
 
         # show split when next pilot crosses
         if info.next_rank.split_time:
-            if info.race.win_condition == WinCondition.FASTEST_3_CONSECUTIVE or info.race.win_condition == WinCondition.FASTEST_LAP:
+            if info.race.win_condition == WinCondition.FASTEST_CONSECUTIVE or info.race.win_condition == WinCondition.FASTEST_LAP:
                 # don't update
                 pass
 
