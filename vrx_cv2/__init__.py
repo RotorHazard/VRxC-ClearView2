@@ -47,9 +47,8 @@ def registerHandlers(args):
             'ClearView 2.0'
         ))
 
-def initialize(**kwargs):
-    if 'Events' in kwargs:
-        kwargs['Events'].on('VRxC_Initialize', 'VRx_register_CV2', registerHandlers, {}, 75, True)
+def initialize(rhapi):
+    rhapi.events.on(Evt.VRX_INITIALIZE, registerHandlers)
 
 class CV2Controller(VRxController):
 
