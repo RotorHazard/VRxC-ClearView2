@@ -40,17 +40,21 @@ logger = logging.getLogger(__name__)
 VRxALL = -1
 MINIMUM_PAYLOAD = 7
 
-def registerHandlers(args):
-    if 'registerFn' in args:
-        args['registerFn'](CV2Controller(
-            'cv2',
-            'ClearView 2.0'
-        ))
-
 def initialize(rhapi):
-    rhapi.events.on(Evt.VRX_INITIALIZE, registerHandlers)
+    controller = CV2Controller(
+        rhapi,
+        'cv2',
+        'ClearView 2.0'
+    ) 
+    rhapi.events.on(Evt.VRX_INITIALIZE, controller.registerHandlers)
 
 class CV2Controller(VRxController):
+    def __init__(self, rhapi, name, label):
+        self._rhapi = rhapi
+        super().__init__(name, label)
+
+    def registerHandlers(self, args):
+        args['register_fn'](self)
 
     def validate_config(self, supplied_config):
         """Ensure config values are within range and reasonable values"""
@@ -141,7 +145,7 @@ class CV2Controller(VRxController):
                 else:
                     message = self.racecontext.language.__("-None-")
 
-                logger.debug('msg s{1}:  {0}'.format(message, seat))
+                logger.debug('cv2 s{1}:  {0}'.format(message, seat))
                 self.set_message_direct(seat, message)
 
     def onRaceStage(self, _args):
@@ -151,7 +155,7 @@ class CV2Controller(VRxController):
                 pilot = self.racecontext.rhdata.get_pilot(seat_pilots[seat])
                 message = F'{pilot.callsign} | {self.racecontext.language.__("Arm now")}'
 
-                logger.debug('msg s{1}:  {0}'.format(message, seat))
+                logger.debug('cv2 s{1}:  {0}'.format(message, seat))
                 self.set_message_direct(seat, message)
 
     def onRaceStart(self, _args):
@@ -221,7 +225,7 @@ class CV2Controller(VRxController):
         # send message to crosser
         seat_dest = seat_index
         self.set_message_direct(seat_dest, message)
-        logger.debug('msg s{1}:  {0}'.format(message, seat_dest))
+        logger.debug('cv2 s{1}:  {0}'.format(message, seat_dest))
 
         # show split when next pilot crosses
         if info.next_rank.diff_time:
@@ -249,7 +253,7 @@ class CV2Controller(VRxController):
 
                 seat_dest = info.next_rank.seat
                 self.set_message_direct(seat_dest, message)
-                logger.debug('msg s{1}:  {0}'.format(message, seat_dest))
+                logger.debug('cv2 s{1}:  {0}'.format(message, seat_dest))
 
     def onLapsClear(self, args):
         self.set_message_direct(VRxALL, "---")
