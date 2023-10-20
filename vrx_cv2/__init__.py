@@ -201,10 +201,10 @@ class CV2Controller(VRxController):
                 message += F' | {info.current.consecutives_base}/{RHUtils.time_format(info.current.consecutives, TIME_FORMAT)}'
 
         elif info.race.win_condition == WinCondition.FASTEST_LAP:
-            if info.next_rank.split_time:
+            if info.next_rank.diff_time:
                 # pilot in 2nd or lower
                 # "P[n] L[n] 0:00:00 | +0:00.000 Callsign"
-                message += F' | +{RHUtils.time_format(info.next_rank.split_time, TIME_FORMAT)} {info.next_rank.callsign}'
+                message += F' | +{RHUtils.time_format(info.next_rank.diff_time, TIME_FORMAT)} {info.next_rank.callsign}'
             elif info.current.is_best_lap:
                 # pilot in 1st and is best lap
                 # "P[n] L[n] 0:00:00 | Leader Best"
@@ -215,8 +215,8 @@ class CV2Controller(VRxController):
             # WinCondition.NONE
 
             # "P[n] L[n] 0:00:00 | +0:00.000 Callsign"
-            if info.next_rank.split_time:
-                message += F' | +{RHUtils.time_format(info.next_rank.split_time, TIME_FORMAT)} {info.next_rank.callsign}'
+            if info.next_rank.diff_time:
+                message += F' | +{RHUtils.time_format(info.next_rank.diff_time, TIME_FORMAT)} {info.next_rank.callsign}'
 
         # send message to crosser
         seat_dest = seat_index
@@ -224,7 +224,7 @@ class CV2Controller(VRxController):
         logger.debug('msg s{1}:  {0}'.format(message, seat_dest))
 
         # show split when next pilot crosses
-        if info.next_rank.split_time:
+        if info.next_rank.diff_time:
             if info.race.win_condition == WinCondition.FASTEST_CONSECUTIVE or info.race.win_condition == WinCondition.FASTEST_LAP:
                 # don't update
                 pass
@@ -245,7 +245,7 @@ class CV2Controller(VRxController):
                 message = F'{POS_HEADER}{info.next_rank.position} {lap_count} {RHUtils.time_format(info.next_rank.last_lap_time, TIME_FORMAT)}'
 
                  # "P[n] L[n] 0:00:00 | -0:00.000 Callsign"
-                message += F' | -{RHUtils.time_format(info.next_rank.split_time, TIME_FORMAT)} {info.current.callsign}'
+                message += F' | -{RHUtils.time_format(info.next_rank.diff_time, TIME_FORMAT)} {info.current.callsign}'
 
                 seat_dest = info.next_rank.seat
                 self.set_message_direct(seat_dest, message)
