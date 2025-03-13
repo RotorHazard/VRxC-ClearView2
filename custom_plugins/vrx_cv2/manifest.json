@@ -5,7 +5,7 @@
     "author_uri": "https://github.com/RotorHazard/RotorHazard/",
     "description": "Provides VRx Control for ClearView 2.0 (CV2) receivers via the Clearview Comms Module (CVCM)",
     "documentation_uri": "https://github.com/RotorHazard/VRxC-ClearView2",
-    "info_uri": "",
+    "info_uri": null,
     "license": "RotorHazard",
     "license_uri": "https://github.com/RotorHazard/RotorHazard/blob/main/LICENSE",
     "version": "1.2.1",
