@@ -17,10 +17,13 @@ Copy the `vrx_cv2` plugin into the `src/server/plugins` directory in your RotorH
 The [ClearView API](https://github.com/ryaniftron/clearview_interface_public.git) is required. On a typical linux setup, you may install with these commands:
 
 ```
-# cd ~
-# git clone https://github.com/ryaniftron/clearview_interface_public.git --depth 1
-# cd ~/clearview_interface_public/src/clearview-py
-# python2 -m pip install -e .
+cd ~
+git clone https://github.com/ryaniftron/clearview_interface_public.git --depth 1
+cd ~/clearview_interface_public/src/clearview-py
+pyenv install 3.8.1
+pyenv local 3.8.1
+python3 -m pip install -e .
+python3 -m pip install pyserial gevent
 ```
 
 ### Install MQTT
@@ -45,4 +48,4 @@ Only one server may use CV2 VRx Control on a given network at a time. Setting `E
 
 Connect to the CVCM with the typical method. Enter the settings for the network where RotorHazard is running and switch the receiver to Station mode.
 
-After attaching to the netowrk, each CV2 will appear in the conntected devices list. Use the controls on the `Settings` page to set each CV's seat number. The CV2 will receive messages for pilots on that seat.
+After attaching to the network, each CV2 will appear in the connected devices list. Use the controls on the `Settings` page to set each CV's seat number. The CV2 will receive messages for pilots on that seat.
