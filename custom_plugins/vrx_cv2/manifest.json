@@ -7,7 +7,6 @@
     "documentation_uri": "https://github.com/RotorHazard/VRxC-ClearView2",
     "license": "RotorHazard",
     "license_uri": "https://github.com/RotorHazard/RotorHazard/blob/main/LICENSE",
-    "version": "1.0.1",
-    "required_rhapi_version": "1.0",
-    "category": ["OSD & VRx Control"]
+    "version": "1.1.0",
+    "required_rhapi_version": "1.3"
 }

@@ -1,34 +1,19 @@
 '''CV2 VRx Control'''
 
-# Sample configuration:
-#     "VRX_CONTROL": {
-#         "HOST": "localhost",
-#         "ENABLED": true
-#     }
-#
-# HOST domain or IP address of MQTT server for VRx Control messages
-# ENABLED:true is required.
-# ONLY ONE server may use VRx Control on a given network at a time. Setting ENABLED to false
-# is useful to store configuration settings when disabling a timer from VRx Control.
-
-# ClearView API
-# cd ~
-# git clone https://github.com/ryaniftron/clearview_interface_public.git --depth 1
-# cd ~/clearview_interface_public/src/clearview-py
-# python2 -m pip install -e .
 import clearview  #pylint: disable=import-error
 
 import json
 import logging
 import gevent
 import traceback
-from monotonic import monotonic
+from time import monotonic
 
 import Config
 
 from .mqtt_topics import mqtt_publish_topics, mqtt_subscribe_topics, ESP_COMMANDS
 from .VRxCV1_emulator import MQTT_Client
 from eventmanager import Evt
+from RHUI import UIField, UIFieldType
 import Results
 from RHRace import WinCondition
 import RHUtils
@@ -45,8 +30,67 @@ def initialize(rhapi):
         rhapi,
         'cv2',
         'ClearView 2.0'
-    ) 
+    )
     rhapi.events.on(Evt.VRX_INITIALIZE, controller.registerHandlers)
+    rhapi.config.register_section('VRX_CV2')
+    rhapi.ui.register_panel('vrx_cv2', 'VRX Control: Clearview 2.0', 'settings')
+    rhapi.fields.register_option(
+        UIField(
+            'HOST',
+            "Host",
+            UIFieldType.TEXT,
+            value="localhost",
+            persistent_section='VRX_CV2',
+            persistent_restart=True
+        ),
+        'vrx_cv2')
+    rhapi.fields.register_option(
+        UIField(
+            'ENABLED',
+            "Enabled",
+            UIFieldType.CHECKBOX,
+            value=True,
+            persistent_section='VRX_CV2',
+            persistent_restart=True
+        ),
+        'vrx_cv2')
+    rhapi.fields.register_option(
+        UIField(
+            'CV2_LAP_HEADER',
+            "OSD Lap Header",
+            UIFieldType.TEXT,
+            value="L",
+            persistent_section='VRX_CV2',
+            html_attributes={
+                'maxlength': 3,
+            }
+        ),
+        'vrx_cv2')
+    rhapi.fields.register_option(
+        UIField(
+            'CV2_PREV_LAP_HEADER',
+            "OSD Previous Lap Header",
+            UIFieldType.TEXT,
+            value="P",
+            persistent_section='VRX_CV2',
+            html_attributes={
+                'maxlength': 3,
+            }
+        ),
+        'vrx_cv2')
+    rhapi.fields.register_option(
+        UIField(
+            'CV2_POS_HEADER',
+            "OSD Position Header",
+            UIFieldType.TEXT,
+            value="",
+            persistent_section="VRX_CV2",
+            html_attributes={
+                'maxlength': 3,
+            }
+        ),
+        'vrx_cv2')
+
 
 class CV2Controller(VRxController):
     def __init__(self, rhapi, name, label):
@@ -55,6 +99,7 @@ class CV2Controller(VRxController):
 
     def registerHandlers(self, args):
         args['register_fn'](self)
+        self.onInit(args)
 
     def validate_config(self, supplied_config):
         """Ensure config values are within range and reasonable values"""
@@ -72,10 +117,18 @@ class CV2Controller(VRxController):
 
         return saved_config
 
-    def onStartup(self, _args):
+    def onInit(self, _args):
         logger.info("VRxController CV2 starting up")
 
-        self.config = self.validate_config(Config.VRX_CONTROL)
+        self.config = {}
+        host = self._rhapi.config.get('VRX_CV2', 'HOST')
+        if host:
+            self.config['HOST'] = host
+        enabled = self._rhapi.config.get('VRX_CV2', 'ENABLED')
+        if enabled:
+            self.config['ENABLED'] = enabled
+
+        self.config = self.validate_config(self.config)
 
         seat_frequencies = [node.frequency for node in self.racecontext.interface.nodes]
 
@@ -182,9 +235,9 @@ class CV2Controller(VRxController):
 
         # Set up output objects
         TIME_FORMAT = self.racecontext.rhdata.get_option('timeFormat')
-        LAP_HEADER = '{:<1}'.format(self.racecontext.rhdata.get_option('osd_lapHeader', "L"))
-        PREVIOUS_LAP_HEADER = '{:<1}'.format(self.racecontext.rhdata.get_option('osd_previousLapHeader', "P"))
-        POS_HEADER = '{:<1}'.format(self.racecontext.rhdata.get_option('osd_positionHeader', ""))
+        LAP_HEADER = '{:<1}'.format(self._rhapi.config.get('VRX_CV2', 'CV2_LAP_HEADER'))
+        PREVIOUS_LAP_HEADER = '{:<1}'.format(self._rhapi.config.get('VRX_CV2', 'CV2_PREV_LAP_HEADER'))
+        POS_HEADER = '{:<1}'.format(self._rhapi.config.get('VRX_CV2', 'CV2_POS_HEADER'))
         BEST_LAP_TEXT = self.racecontext.language.__('Best Lap')
         HOLESHOT_TEXT = self.racecontext.language.__('HS')
         LEADER_TEXT = self.racecontext.language.__('Leader')

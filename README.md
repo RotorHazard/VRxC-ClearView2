@@ -10,7 +10,7 @@ The system is composed of a RotorHazard plugin and a hardware communicator.
 
 RotorHazard 4.0 or later is required.
 
-Copy the `vrx_cv2` plugin into the `src/server/plugins` directory in your RotorHazard install.
+Install through the "Community Plugins" area within RotorHazard. Alternately, or for earlier versions, copy the `vrx_cv2` directory from inside `custom_plugins` into the `src/server/plugins` directory in your RotorHazard install.
 
 ### Install Clearview API for Python
 
@@ -20,12 +20,12 @@ The [ClearView API](https://github.com/ryaniftron/clearview_interface_public.git
 # cd ~
 # git clone https://github.com/ryaniftron/clearview_interface_public.git --depth 1
 # cd ~/clearview_interface_public/src/clearview-py
-# python2 -m pip install -e .
+# python -m pip install -e .
 ```
 
 ### Install MQTT
 
-On the RotorHazard server or elsewhere on your network; install, configure, and run an MQTT server. A common option which available on many platforms is [Eclipse Mosquitto](https://mosquitto.org/). Configure your server to accept messages without authentication from the RotorHazard server.
+On the RotorHazard server or elsewhere on your network; install, configure, and run an MQTT server. A common option which is available on many platforms is [Eclipse Mosquitto](https://mosquitto.org/). Configure your server to accept messages without authentication from the RotorHazard server.
 
 ### Configure Plugin
 
